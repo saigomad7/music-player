@@ -259,6 +259,92 @@
     background: rgba(217, 108, 95, 0.12);
   }
 
+  .move {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    font-size: 0.95rem;
+    background: none;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .move:hover { background: var(--accent-soft); }
+
+  /* 폴더 선택 시트 */
+  .sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(64, 55, 47, 0.45);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 10;
+  }
+
+  .sheet {
+    width: 100%;
+    max-width: 430px;
+    background: var(--surface);
+    border-radius: 20px 20px 0 0;
+    padding: 20px 18px 30px;
+  }
+
+  .sheet h2 {
+    font-size: 1.05rem;
+    margin-bottom: 4px;
+  }
+
+  .sheet-sub {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sheet-option {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 14px;
+    margin-bottom: 8px;
+    font-size: 1rem;
+    font-family: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .sheet-option:hover {
+    border-color: var(--accent);
+    background: var(--surface-hover);
+  }
+
+  .sheet-cancel {
+    display: block;
+    width: 100%;
+    padding: 14px;
+    margin-top: 6px;
+    font-size: 1rem;
+    font-family: inherit;
+    font-weight: 600;
+    color: var(--text-dim);
+    background: none;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
   .empty {
     text-align: center;
     color: var(--text-dim);
@@ -505,6 +591,12 @@
     titleSpan.textContent = song.title;
     titleSpan.addEventListener('click', () => togglePlay(song, li));
 
+    const moveBtn = document.createElement('button');
+    moveBtn.className = 'move';
+    moveBtn.textContent = '📂';
+    moveBtn.setAttribute('aria-label', song.title + ' 다른 폴더로 이동');
+    moveBtn.addEventListener('click', () => moveSong(song));
+
     const delBtn = document.createElement('button');
     delBtn.className = 'delete';
     delBtn.textContent = '✕';
@@ -513,6 +605,7 @@
 
     li.appendChild(icon);
     li.appendChild(titleSpan);
+    li.appendChild(moveBtn);
     li.appendChild(delBtn);
     songList.appendChild(li);
     return li;
@@ -599,6 +692,56 @@
 
     saveData();
     render();
+  }
+
+  function moveSong(song) {
+    const others = data.folders.filter(f => f.id !== activeFolder().id);
+    if (!others.length) {
+      alert('옮길 다른 폴더가 없어요.\n먼저 + 새 폴더를 만들어 주세요.');
+      return;
+    }
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'sheet-backdrop';
+    backdrop.addEventListener('click', e => {
+      if (e.target === backdrop) backdrop.remove();
+    });
+
+    const sheet = document.createElement('div');
+    sheet.className = 'sheet';
+
+    const heading = document.createElement('h2');
+    heading.textContent = '어느 폴더로 옮길까요?';
+    const sub = document.createElement('p');
+    sub.className = 'sheet-sub';
+    sub.textContent = song.title;
+    sheet.appendChild(heading);
+    sheet.appendChild(sub);
+
+    others.forEach(folder => {
+      const option = document.createElement('button');
+      option.className = 'sheet-option';
+      option.textContent = `📁 ${folder.name} (${folder.songs.length}곡)`;
+      option.addEventListener('click', () => {
+        const from = activeFolder();
+        const idx = from.songs.indexOf(song);
+        if (idx > -1) from.songs.splice(idx, 1);
+        folder.songs.push(song);
+        saveData();
+        backdrop.remove();
+        render();
+      });
+      sheet.appendChild(option);
+    });
+
+    const cancel = document.createElement('button');
+    cancel.className = 'sheet-cancel';
+    cancel.textContent = '취소';
+    cancel.addEventListener('click', () => backdrop.remove());
+    sheet.appendChild(cancel);
+
+    backdrop.appendChild(sheet);
+    document.body.appendChild(backdrop);
   }
 
   // 플레이어 자체 컨트롤과 목록 표시 동기화 (mp3 곡일 때만)
