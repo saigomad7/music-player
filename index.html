@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>노래 관리자</title>
+<style>
+  :root {
+    --bg: #121212;
+    --surface: #1e1e1e;
+    --surface-hover: #2e2e2e;
+    --text: #eaeaea;
+    --text-dim: #9a9a9a;
+    --accent: #4dabf7;
+    --accent-active: #74c0fc;
+    --danger: #ff6b6b;
+    --border: #333;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+  }
+
+  .app {
+    width: 100%;
+    max-width: 430px;      /* 모바일 기준 폭 */
+    padding: 20px 16px 40px;
+  }
+
+  h1 {
+    font-size: 1.3rem;
+    margin-bottom: 16px;
+    text-align: center;
+  }
+
+  /* 입력 영역 */
+  .form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+  }
+
+  .form input {
+    width: 100%;
+    padding: 12px;
+    font-size: 1rem;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    outline: none;
+  }
+
+  .form input:focus { border-color: var(--accent); }
+  .form input::placeholder { color: var(--text-dim); }
+
+  .form button {
+    padding: 13px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #10131a;
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .form button:hover { background: var(--accent-active); }
+
+  /* 오디오 플레이어 */
+  .player { margin: 16px 0; }
+  .player audio { width: 100%; }
+
+  .now-playing {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+    min-height: 1.2em;
+  }
+
+  /* 노래 목록 */
+  #song-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #song-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px 6px 4px 0;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  #song-list li:hover {
+    background: var(--surface-hover);
+    border-color: var(--accent);
+  }
+
+  #song-list li.playing {
+    border-color: var(--accent);
+    background: rgba(77, 171, 247, 0.12);
+  }
+
+  #song-list li.playing .title { color: var(--accent-active); }
+
+  .title {
+    flex: 1;
+    padding: 14px 12px;
+    font-size: 1rem;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .delete {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    font-size: 1rem;
+    color: var(--text-dim);
+    background: none;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .delete:hover {
+    color: var(--danger);
+    background: rgba(255, 107, 107, 0.12);
+  }
+
+  .empty {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.9rem;
+    padding: 24px 0;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>🎵 노래 관리자</h1>
+
+  <div class="form">
+    <input id="song-title" type="text" placeholder="노래 제목" autocomplete="off">
+    <input id="song-url" type="url" placeholder="노래 URL (mp3 등)" autocomplete="off">
+    <button id="add-btn">노래 추가</button>
+  </div>
+
+  <div class="player">
+    <div class="now-playing" id="now-playing"></div>
+    <audio id="audio" controls></audio>
+  </div>
+
+  <ul id="song-list"></ul>
+  <div class="empty" id="empty-msg">추가된 노래가 없습니다.</div>
+</div>
+
+<script>
+  const titleInput = document.getElementById('song-title');
+  const urlInput = document.getElementById('song-url');
+  const addBtn = document.getElementById('add-btn');
+  const songList = document.getElementById('song-list');
+  const audio = document.getElementById('audio');
+  const nowPlaying = document.getElementById('now-playing');
+  const emptyMsg = document.getElementById('empty-msg');
+
+  let currentItem = null; // 현재 재생 중인 li
+
+  function updateEmptyMsg() {
+    emptyMsg.style.display = songList.children.length ? 'none' : 'block';
+  }
+
+  function addSong() {
+    const title = titleInput.value.trim();
+    const url = urlInput.value.trim();
+    if (!title || !url) {
+      alert('노래 제목과 URL을 모두 입력해 주세요.');
+      return;
+    }
+
+    const li = document.createElement('li');
+    li.dataset.url = url;
+
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'title';
+    titleSpan.textContent = title;
+    titleSpan.addEventListener('click', () => togglePlay(li, title));
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'delete';
+    delBtn.textContent = '✕';
+    delBtn.setAttribute('aria-label', title + ' 삭제');
+    delBtn.addEventListener('click', () => removeSong(li));
+
+    li.appendChild(titleSpan);
+    li.appendChild(delBtn);
+    songList.appendChild(li);
+
+    titleInput.value = '';
+    urlInput.value = '';
+    titleInput.focus();
+    updateEmptyMsg();
+  }
+
+  function togglePlay(li, title) {
+    if (currentItem === li) {
+      // 같은 곡 클릭 → 재생/일시정지 토글
+      if (audio.paused) {
+        audio.play();
+        li.classList.add('playing');
+      } else {
+        audio.pause();
+        li.classList.remove('playing');
+      }
+      return;
+    }
+
+    // 다른 곡 클릭 → 새로 재생
+    if (currentItem) currentItem.classList.remove('playing');
+    currentItem = li;
+    audio.src = li.dataset.url;
+    audio.play();
+    li.classList.add('playing');
+    nowPlaying.textContent = '재생 중: ' + title;
+  }
+
+  function removeSong(li) {
+    if (currentItem === li) {
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+      nowPlaying.textContent = '';
+      currentItem = null;
+    }
+    li.remove();
+    updateEmptyMsg();
+  }
+
+  // 플레이어 자체 컨트롤과 목록 표시 동기화
+  audio.addEventListener('pause', () => {
+    if (currentItem) currentItem.classList.remove('playing');
+  });
+  audio.addEventListener('play', () => {
+    if (currentItem) currentItem.classList.add('playing');
+  });
+  audio.addEventListener('ended', () => {
+    if (currentItem) currentItem.classList.remove('playing');
+  });
+
+  addBtn.addEventListener('click', addSong);
+  urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') addSong(); });
+  titleInput.addEventListener('keydown', e => { if (e.key === 'Enter') addSong(); });
+
+  updateEmptyMsg();
+</script>
+</body>
+</html>
