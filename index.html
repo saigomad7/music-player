@@ -3,18 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>노래 관리자</title>
+<title>My Playlist</title>
 <style>
   :root {
-    --bg: #121212;
-    --surface: #1e1e1e;
-    --surface-hover: #2e2e2e;
-    --text: #eaeaea;
-    --text-dim: #9a9a9a;
-    --accent: #4dabf7;
-    --accent-active: #74c0fc;
-    --danger: #ff6b6b;
-    --border: #333;
+    --bg: #faf6f0;
+    --surface: #ffffff;
+    --surface-hover: #fdf1e8;
+    --text: #40372f;
+    --text-dim: #a89c8f;
+    --accent: #e2795b;
+    --accent-deep: #cf6448;
+    --accent-soft: #fbe9e1;
+    --danger: #d96c5f;
+    --border: #f0e6da;
+    --shadow: 0 2px 14px rgba(120, 90, 60, 0.08);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -31,13 +33,37 @@
   .app {
     width: 100%;
     max-width: 430px;      /* 모바일 기준 폭 */
-    padding: 20px 16px 40px;
+    padding: 28px 18px 48px;
   }
 
-  h1 {
-    font-size: 1.3rem;
-    margin-bottom: 16px;
+  /* 헤더 */
+  .header {
     text-align: center;
+    margin-bottom: 22px;
+  }
+
+  .logo {
+    width: 52px;
+    height: 52px;
+    margin: 0 auto 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    background: var(--accent-soft);
+    border-radius: 50%;
+  }
+
+  .header h1 {
+    font-size: 1.45rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  .tagline {
+    margin-top: 6px;
+    font-size: 0.85rem;
+    color: var(--text-dim);
   }
 
   /* 입력 영역 */
@@ -47,57 +73,113 @@
     gap: 10px;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 14px;
+    border-radius: 18px;
+    padding: 16px;
+    box-shadow: var(--shadow);
   }
 
   .form input {
     width: 100%;
-    padding: 12px;
+    padding: 13px 14px;
     font-size: 1rem;
     background: var(--bg);
     color: var(--text);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 12px;
     outline: none;
+    transition: border-color 0.15s;
   }
 
   .form input:focus { border-color: var(--accent); }
   .form input::placeholder { color: var(--text-dim); }
 
   .form button {
-    padding: 13px;
+    padding: 14px;
     font-size: 1rem;
     font-weight: 600;
-    color: #10131a;
+    color: #fff;
     background: var(--accent);
     border: none;
-    border-radius: 8px;
+    border-radius: 12px;
     cursor: pointer;
+    transition: background 0.15s;
     -webkit-tap-highlight-color: transparent;
   }
 
-  .form button:hover { background: var(--accent-active); }
+  .form button:hover { background: var(--accent-deep); }
 
-  /* 오디오 플레이어 */
-  .player { margin: 16px 0; }
+  /* 플레이어 */
+  .player { margin: 18px 0; }
   .player audio { width: 100%; }
 
-  /* 유튜브 플레이어 */
   .yt-wrap {
     aspect-ratio: 16 / 9;
-    border-radius: 10px;
+    border-radius: 14px;
     overflow: hidden;
     background: #000;
     margin-bottom: 10px;
+    box-shadow: var(--shadow);
   }
   .yt-wrap iframe { width: 100%; height: 100%; border: 0; }
 
   .now-playing {
     font-size: 0.85rem;
-    color: var(--text-dim);
-    margin-bottom: 6px;
+    color: var(--accent);
+    margin-bottom: 8px;
     min-height: 1.2em;
+    text-align: center;
+  }
+
+  /* 폴더 바 */
+  .folders {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    margin: 4px 0 14px;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .folder-chip {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 15px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    color: var(--text-dim);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .folder-chip:hover { border-color: var(--accent); }
+
+  .folder-chip.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+
+  .folder-chip .count {
+    font-size: 0.75rem;
+    opacity: 0.75;
+  }
+
+  .folder-chip .folder-del {
+    font-size: 0.8rem;
+    padding-left: 2px;
+    opacity: 0.85;
+  }
+
+  .folder-add {
+    border-style: dashed;
+    color: var(--text-dim);
   }
 
   /* 노래 목록 */
@@ -105,36 +187,50 @@
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
   }
 
   #song-list li {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 10px;
+    gap: 4px;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 4px 6px 4px 0;
-    transition: background 0.15s, border-color 0.15s;
+    border-radius: 14px;
+    padding: 4px 8px 4px 10px;
+    box-shadow: var(--shadow);
+    transition: background 0.15s, border-color 0.15s, transform 0.15s;
   }
 
   #song-list li:hover {
     background: var(--surface-hover);
     border-color: var(--accent);
+    transform: translateY(-1px);
   }
 
   #song-list li.playing {
     border-color: var(--accent);
-    background: rgba(77, 171, 247, 0.12);
+    background: var(--accent-soft);
   }
 
-  #song-list li.playing .title { color: var(--accent-active); }
+  #song-list li.playing .title { color: var(--accent-deep); }
+
+  .icon {
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    color: var(--accent-deep);
+    background: var(--accent-soft);
+    border-radius: 10px;
+  }
 
   .title {
     flex: 1;
-    padding: 14px 12px;
+    padding: 15px 8px;
     font-size: 1rem;
     cursor: pointer;
     user-select: none;
@@ -148,36 +244,41 @@
     flex-shrink: 0;
     width: 40px;
     height: 40px;
-    font-size: 1rem;
+    font-size: 0.95rem;
     color: var(--text-dim);
     background: none;
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     cursor: pointer;
+    transition: color 0.15s, background 0.15s;
     -webkit-tap-highlight-color: transparent;
   }
 
   .delete:hover {
     color: var(--danger);
-    background: rgba(255, 107, 107, 0.12);
+    background: rgba(217, 108, 95, 0.12);
   }
 
   .empty {
     text-align: center;
     color: var(--text-dim);
     font-size: 0.9rem;
-    padding: 24px 0;
+    padding: 28px 0;
   }
 </style>
 </head>
 <body>
 <div class="app">
-  <h1>🎵 노래 관리자</h1>
+  <header class="header">
+    <div class="logo">🎧</div>
+    <h1>My Playlist</h1>
+    <p class="tagline">듣고 싶은 노래를 나만의 폴더로</p>
+  </header>
 
   <div class="form">
     <input id="song-title" type="text" placeholder="노래 제목" autocomplete="off">
     <input id="song-url" type="url" placeholder="노래 URL (mp3 또는 유튜브 링크)" autocomplete="off">
-    <button id="add-btn">노래 추가</button>
+    <button id="add-btn">목록에 담기</button>
   </div>
 
   <div class="player">
@@ -186,8 +287,10 @@
     <audio id="audio" controls></audio>
   </div>
 
+  <div class="folders" id="folder-bar"></div>
+
   <ul id="song-list"></ul>
-  <div class="empty" id="empty-msg">추가된 노래가 없습니다.</div>
+  <div class="empty" id="empty-msg">이 폴더에 담긴 노래가 없어요</div>
 </div>
 
 <script>
@@ -198,12 +301,37 @@
   const audio = document.getElementById('audio');
   const nowPlaying = document.getElementById('now-playing');
   const emptyMsg = document.getElementById('empty-msg');
-
   const ytWrap = document.getElementById('yt-wrap');
+  const folderBar = document.getElementById('folder-bar');
 
-  let currentItem = null; // 현재 재생 중인 li
+  const STORAGE_KEY = 'music-player-data';
+  const LEGACY_KEY = 'music-player-songs';
 
-  const STORAGE_KEY = 'music-player-songs';
+  let current = null;   // { url, title } 현재 재생 곡
+  let currentLi = null; // 현재 재생 곡의 li (다른 폴더를 보는 중이면 null)
+
+  /* ---------- 데이터 (폴더 구조) ---------- */
+
+  function loadData() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (saved && Array.isArray(saved.folders) && saved.folders.length) return saved;
+    } catch {}
+    // 이전 버전(단일 목록) 데이터를 기본 폴더로 이전
+    let legacy = [];
+    try { legacy = JSON.parse(localStorage.getItem(LEGACY_KEY)) || []; } catch {}
+    return { folders: [{ id: 'default', name: '내 노래', songs: legacy }], activeId: 'default' };
+  }
+
+  let data = loadData();
+
+  function saveData() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }
+
+  function activeFolder() {
+    return data.folders.find(f => f.id === data.activeId) || data.folders[0];
+  }
 
   /* ---------- 유튜브 ---------- */
 
@@ -228,16 +356,16 @@
           }
         },
         onStateChange: (e) => {
-          if (!currentItem || !getYouTubeId(currentItem.dataset.url)) return;
+          if (!current || !getYouTubeId(current.url) || !currentLi) return;
           if (e.data === YT.PlayerState.PLAYING) {
-            currentItem.classList.add('playing');
+            currentLi.classList.add('playing');
           } else if (e.data === YT.PlayerState.PAUSED || e.data === YT.PlayerState.ENDED) {
-            currentItem.classList.remove('playing');
+            currentLi.classList.remove('playing');
           }
         },
         onError: () => {
-          nowPlaying.textContent = '이 영상은 외부 사이트 재생이 허용되지 않습니다.';
-          if (currentItem) currentItem.classList.remove('playing');
+          nowPlaying.textContent = '이 영상은 외부 사이트 재생이 허용되지 않아요.';
+          if (currentLi) currentLi.classList.remove('playing');
         }
       }
     });
@@ -269,45 +397,132 @@
     ytWrap.hidden = true;
   }
 
-  function loadSongs() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-    } catch {
-      return [];
+  function isPlayingNow() {
+    if (!current) return false;
+    if (getYouTubeId(current.url)) {
+      return ytReady && ytPlayer.getPlayerState() === YT.PlayerState.PLAYING;
     }
+    return !audio.paused;
   }
 
-  function saveSongs() {
-    const songs = [...songList.children].map(li => ({
-      title: li.querySelector('.title').textContent,
-      url: li.dataset.url
-    }));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(songs));
+  /* ---------- 화면 그리기 ---------- */
+
+  function render() {
+    renderFolders();
+    renderSongs();
+  }
+
+  function renderFolders() {
+    folderBar.innerHTML = '';
+
+    data.folders.forEach((folder, idx) => {
+      const chip = document.createElement('button');
+      chip.className = 'folder-chip' + (folder.id === data.activeId ? ' active' : '');
+
+      const name = document.createElement('span');
+      name.textContent = '📁 ' + folder.name;
+      const count = document.createElement('span');
+      count.className = 'count';
+      count.textContent = folder.songs.length;
+      chip.appendChild(name);
+      chip.appendChild(count);
+
+      // 기본 폴더가 아닌 선택된 폴더에만 삭제 버튼 표시
+      if (idx > 0 && folder.id === data.activeId) {
+        const del = document.createElement('span');
+        del.className = 'folder-del';
+        del.textContent = '✕';
+        del.addEventListener('click', (e) => {
+          e.stopPropagation();
+          deleteFolder(folder);
+        });
+        chip.appendChild(del);
+      }
+
+      chip.addEventListener('click', () => {
+        data.activeId = folder.id;
+        saveData();
+        render();
+      });
+
+      folderBar.appendChild(chip);
+    });
+
+    const add = document.createElement('button');
+    add.className = 'folder-chip folder-add';
+    add.textContent = '+ 새 폴더';
+    add.addEventListener('click', createFolder);
+    folderBar.appendChild(add);
+  }
+
+  function createFolder() {
+    const name = prompt('새 폴더 이름을 입력해 주세요.');
+    if (!name || !name.trim()) return;
+    const folder = { id: String(Date.now()), name: name.trim(), songs: [] };
+    data.folders.push(folder);
+    data.activeId = folder.id;
+    saveData();
+    render();
+  }
+
+  function deleteFolder(folder) {
+    const base = data.folders[0];
+    const msg = folder.songs.length
+      ? `'${folder.name}' 폴더를 삭제할까요?\n담긴 노래 ${folder.songs.length}곡은 '${base.name}' 폴더로 이동돼요.`
+      : `'${folder.name}' 폴더를 삭제할까요?`;
+    if (!confirm(msg)) return;
+    base.songs.push(...folder.songs);
+    data.folders = data.folders.filter(f => f.id !== folder.id);
+    data.activeId = base.id;
+    saveData();
+    render();
+  }
+
+  function renderSongs() {
+    songList.innerHTML = '';
+    currentLi = null;
+
+    activeFolder().songs.forEach(song => {
+      const li = createSongItem(song);
+      if (current && current.url === song.url) {
+        currentLi = li;
+        if (isPlayingNow()) li.classList.add('playing');
+      }
+    });
+
+    updateEmptyMsg();
+  }
+
+  function createSongItem(song) {
+    const li = document.createElement('li');
+
+    const icon = document.createElement('span');
+    icon.className = 'icon';
+    icon.textContent = getYouTubeId(song.url) ? '▶' : '♪';
+
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'title';
+    titleSpan.textContent = song.title;
+    titleSpan.addEventListener('click', () => togglePlay(song, li));
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'delete';
+    delBtn.textContent = '✕';
+    delBtn.setAttribute('aria-label', song.title + ' 삭제');
+    delBtn.addEventListener('click', () => removeSong(song));
+
+    li.appendChild(icon);
+    li.appendChild(titleSpan);
+    li.appendChild(delBtn);
+    songList.appendChild(li);
+    return li;
   }
 
   function updateEmptyMsg() {
     emptyMsg.style.display = songList.children.length ? 'none' : 'block';
   }
 
-  function createSongItem(title, url) {
-    const li = document.createElement('li');
-    li.dataset.url = url;
-
-    const titleSpan = document.createElement('span');
-    titleSpan.className = 'title';
-    titleSpan.textContent = title;
-    titleSpan.addEventListener('click', () => togglePlay(li, title));
-
-    const delBtn = document.createElement('button');
-    delBtn.className = 'delete';
-    delBtn.textContent = '✕';
-    delBtn.setAttribute('aria-label', title + ' 삭제');
-    delBtn.addEventListener('click', () => removeSong(li));
-
-    li.appendChild(titleSpan);
-    li.appendChild(delBtn);
-    songList.appendChild(li);
-  }
+  /* ---------- 노래 추가/재생/삭제 ---------- */
 
   function addSong() {
     const title = titleInput.value.trim();
@@ -317,20 +532,21 @@
       return;
     }
 
-    createSongItem(title, url);
-    saveSongs();
+    activeFolder().songs.push({ title, url });
+    saveData();
+    render();
 
     titleInput.value = '';
     urlInput.value = '';
     titleInput.focus();
-    updateEmptyMsg();
   }
 
-  function togglePlay(li, title) {
-    const ytId = getYouTubeId(li.dataset.url);
+  function togglePlay(song, li) {
+    const ytId = getYouTubeId(song.url);
 
-    if (currentItem === li) {
+    if (current && current.url === song.url) {
       // 같은 곡 클릭 → 재생/일시정지 토글
+      currentLi = li;
       if (ytId) {
         if (!ytReady) return;
         if (ytPlayer.getPlayerState() === YT.PlayerState.PLAYING) {
@@ -346,23 +562,30 @@
     }
 
     // 다른 곡 클릭 → 새로 재생
-    if (currentItem) currentItem.classList.remove('playing');
-    currentItem = li;
-    nowPlaying.textContent = '재생 중: ' + title;
+    if (currentLi) currentLi.classList.remove('playing');
+    current = { url: song.url, title: song.title };
+    currentLi = li;
+    nowPlaying.textContent = '지금 듣는 중 · ' + song.title;
 
     if (ytId) {
       playYouTube(ytId);
     } else {
       stopYouTube();
-      audio.src = li.dataset.url;
+      audio.src = song.url;
       audio.play();
     }
     li.classList.add('playing');
   }
 
-  function removeSong(li) {
-    if (currentItem === li) {
-      if (getYouTubeId(li.dataset.url)) {
+  function removeSong(song) {
+    if (!confirm(`'${song.title}'\n이 노래를 폴더에서 뺄까요?`)) return;
+
+    const folder = activeFolder();
+    const idx = folder.songs.indexOf(song);
+    if (idx > -1) folder.songs.splice(idx, 1);
+
+    if (current && current.url === song.url) {
+      if (getYouTubeId(song.url)) {
         stopYouTube();
       } else {
         audio.pause();
@@ -370,34 +593,33 @@
         audio.load();
       }
       nowPlaying.textContent = '';
-      currentItem = null;
+      current = null;
+      currentLi = null;
     }
-    li.remove();
-    saveSongs();
-    updateEmptyMsg();
+
+    saveData();
+    render();
   }
 
   // 플레이어 자체 컨트롤과 목록 표시 동기화 (mp3 곡일 때만)
   function currentIsAudio() {
-    return currentItem && !getYouTubeId(currentItem.dataset.url);
+    return current && !getYouTubeId(current.url);
   }
   audio.addEventListener('pause', () => {
-    if (currentIsAudio()) currentItem.classList.remove('playing');
+    if (currentIsAudio() && currentLi) currentLi.classList.remove('playing');
   });
   audio.addEventListener('play', () => {
-    if (currentIsAudio()) currentItem.classList.add('playing');
+    if (currentIsAudio() && currentLi) currentLi.classList.add('playing');
   });
   audio.addEventListener('ended', () => {
-    if (currentIsAudio()) currentItem.classList.remove('playing');
+    if (currentIsAudio() && currentLi) currentLi.classList.remove('playing');
   });
 
   addBtn.addEventListener('click', addSong);
   urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') addSong(); });
   titleInput.addEventListener('keydown', e => { if (e.key === 'Enter') addSong(); });
 
-  // 저장된 목록 복원
-  loadSongs().forEach(song => createSongItem(song.title, song.url));
-  updateEmptyMsg();
+  render();
 </script>
 </body>
 </html>
