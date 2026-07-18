@@ -162,6 +162,48 @@
     text-align: center;
   }
 
+  /* 자동 재생 스위치 */
+  .auto-next {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 12px;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .auto-next input {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 40px;
+    height: 22px;
+    background: var(--border);
+    border-radius: 999px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .auto-next input::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    transition: left 0.2s;
+  }
+
+  .auto-next input:checked { background: var(--accent); }
+  .auto-next input:checked::after { left: 21px; }
+
   /* 폴더 바 */
   .folders {
     display: flex;
@@ -258,6 +300,14 @@
     color: var(--accent-deep);
     background: var(--accent-soft);
     border-radius: 10px;
+    touch-action: none; /* 드래그 핸들: 잡았을 때 화면 스크롤 방지 */
+    cursor: grab;
+  }
+
+  #song-list li.dragging {
+    opacity: 0.75;
+    border-color: var(--accent);
+    box-shadow: 0 6px 18px rgba(120, 90, 60, 0.2);
   }
 
   .title {
@@ -407,6 +457,10 @@
     <div class="yt-wrap" id="yt-wrap" hidden><div id="yt-player"></div></div>
     <video id="video" controls playsinline hidden></video>
     <audio id="audio" controls></audio>
+    <label class="auto-next">
+      <input type="checkbox" id="auto-next-toggle">
+      <span>다음 곡 자동 재생</span>
+    </label>
   </div>
 
   <div class="folders" id="folder-bar"></div>
@@ -560,11 +614,14 @@
           }
         },
         onStateChange: (e) => {
-          if (!current || !current.isYt || !currentLi) return;
+          if (!current || !current.isYt) return;
           if (e.data === YT.PlayerState.PLAYING) {
-            currentLi.classList.add('playing');
-          } else if (e.data === YT.PlayerState.PAUSED || e.data === YT.PlayerState.ENDED) {
-            currentLi.classList.remove('playing');
+            if (currentLi) currentLi.classList.add('playing');
+          } else if (e.data === YT.PlayerState.PAUSED) {
+            if (currentLi) currentLi.classList.remove('playing');
+          } else if (e.data === YT.PlayerState.ENDED) {
+            if (currentLi) currentLi.classList.remove('playing');
+            playNext();
           }
         },
         onError: () => {
@@ -701,6 +758,7 @@
 
   function createSongItem(song) {
     const li = document.createElement('li');
+    li.dataset.key = songKey(song);
 
     const icon = document.createElement('span');
     icon.className = 'icon';
@@ -728,7 +786,48 @@
     li.appendChild(moveBtn);
     li.appendChild(delBtn);
     songList.appendChild(li);
+    makeDraggable(li, icon);
     return li;
+  }
+
+  // 아이콘을 잡고 위아래로 끌어 순서 변경
+  function makeDraggable(li, handle) {
+    handle.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      handle.setPointerCapture(e.pointerId);
+      li.classList.add('dragging');
+
+      const move = (ev) => {
+        const siblings = [...songList.children].filter(el => el !== li);
+        const after = siblings.find(el => {
+          const r = el.getBoundingClientRect();
+          return ev.clientY < r.top + r.height / 2;
+        });
+        if (after) songList.insertBefore(li, after);
+        else songList.appendChild(li);
+      };
+
+      const up = () => {
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', up);
+        handle.removeEventListener('pointercancel', up);
+        li.classList.remove('dragging');
+        applyDomOrder();
+      };
+
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', up);
+      handle.addEventListener('pointercancel', up);
+    });
+  }
+
+  // 화면의 카드 순서를 저장된 목록 순서에 반영
+  function applyDomOrder() {
+    const folder = activeFolder();
+    const orderedKeys = [...songList.children].map(el => el.dataset.key);
+    folder.songs.sort((a, b) => orderedKeys.indexOf(songKey(a)) - orderedKeys.indexOf(songKey(b)));
+    saveData();
+    render();
   }
 
   function updateEmptyMsg() {
@@ -755,13 +854,10 @@
   }
 
   function togglePlay(song, li) {
-    const ytId = getYouTubeId(song.url);
-    const key = songKey(song);
-
-    if (current && current.key === key) {
+    if (current && current.key === songKey(song)) {
       // 같은 곡 클릭 → 재생/일시정지 토글
       currentLi = li;
-      if (ytId) {
+      if (current.isYt) {
         if (!ytReady) return;
         if (ytPlayer.getPlayerState() === YT.PlayerState.PLAYING) {
           ytPlayer.pauseVideo();
@@ -776,10 +872,15 @@
       return;
     }
 
-    // 다른 곡 클릭 → 새로 재생
+    playSong(song, data.activeId, li);
+  }
+
+  function playSong(song, folderId, li) {
+    const ytId = getYouTubeId(song.url);
+
     if (currentLi) currentLi.classList.remove('playing');
-    current = { key, title: song.title, isYt: !!ytId, isVideo: !!song.isVideo };
-    currentLi = li;
+    current = { key: songKey(song), title: song.title, isYt: !!ytId, isVideo: !!song.isVideo, folderId };
+    currentLi = li || null;
     nowPlaying.textContent = '지금 듣는 중 · ' + song.title;
 
     if (ytId) {
@@ -791,9 +892,21 @@
       stopYouTube();
       stopVideo();
       audio.src = song.url;
-      audio.play();
+      audio.play().catch(() => {});
     }
-    li.classList.add('playing');
+
+    if (currentLi) currentLi.classList.add('playing');
+    else renderSongs(); // 자동 재생 등으로 li 없이 시작된 경우 화면 갱신
+  }
+
+  // 자동 재생이 켜져 있으면 같은 폴더의 다음 곡 재생
+  function playNext() {
+    if (!data.autoNext || !current) return;
+    const folder = data.folders.find(f => f.id === current.folderId);
+    if (!folder) return;
+    const idx = folder.songs.findIndex(s => songKey(s) === current.key);
+    if (idx === -1 || idx + 1 >= folder.songs.length) return; // 마지막 곡이면 정지
+    playSong(folder.songs[idx + 1], folder.id, null);
   }
 
   function removeSong(song) {
@@ -888,7 +1001,9 @@
     if (currentIsAudio() && currentLi) currentLi.classList.add('playing');
   });
   audio.addEventListener('ended', () => {
-    if (currentIsAudio() && currentLi) currentLi.classList.remove('playing');
+    if (!currentIsAudio()) return;
+    if (currentLi) currentLi.classList.remove('playing');
+    playNext();
   });
   video.addEventListener('pause', () => {
     if (currentIsVideo() && currentLi) currentLi.classList.remove('playing');
@@ -897,7 +1012,9 @@
     if (currentIsVideo() && currentLi) currentLi.classList.add('playing');
   });
   video.addEventListener('ended', () => {
-    if (currentIsVideo() && currentLi) currentLi.classList.remove('playing');
+    if (!currentIsVideo()) return;
+    if (currentLi) currentLi.classList.remove('playing');
+    playNext();
   });
 
   // 내 파일에서 고르기
@@ -933,6 +1050,14 @@
     if (failed) {
       alert(`${failed}개 파일은 저장하지 못했어요.\n휴대폰 저장 공간이 부족할 수 있어요.`);
     }
+  });
+
+  // 자동 재생 스위치 (기본 꺼짐, 설정 저장)
+  const autoNextToggle = document.getElementById('auto-next-toggle');
+  autoNextToggle.checked = !!data.autoNext;
+  autoNextToggle.addEventListener('change', () => {
+    data.autoNext = autoNextToggle.checked;
+    saveData();
   });
 
   addBtn.addEventListener('click', addSong);
