@@ -135,6 +135,15 @@
   .player { margin: 18px 0; }
   .player audio { width: 100%; }
 
+  .player video {
+    width: 100%;
+    max-height: 260px;
+    border-radius: 14px;
+    background: #000;
+    box-shadow: var(--shadow);
+    margin-bottom: 10px;
+  }
+
   .yt-wrap {
     aspect-ratio: 16 / 9;
     border-radius: 14px;
@@ -390,12 +399,13 @@
     <button id="add-btn">목록에 담기</button>
     <div class="divider">또는</div>
     <button id="file-btn" class="file-btn" type="button">📁 내 파일에서 고르기</button>
-    <input id="file-input" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg" hidden>
+    <input id="file-input" type="file" accept="audio/*,video/mp4,video/webm,video/quicktime,.mp3,.m4a,.aac,.wav,.ogg,.mp4,.mov,.webm" hidden>
   </div>
 
   <div class="player">
     <div class="now-playing" id="now-playing"></div>
     <div class="yt-wrap" id="yt-wrap" hidden><div id="yt-player"></div></div>
+    <video id="video" controls playsinline hidden></video>
     <audio id="audio" controls></audio>
   </div>
 
@@ -414,6 +424,7 @@
   const nowPlaying = document.getElementById('now-playing');
   const emptyMsg = document.getElementById('empty-msg');
   const ytWrap = document.getElementById('yt-wrap');
+  const video = document.getElementById('video');
   const folderBar = document.getElementById('folder-bar');
   const fileBtn = document.getElementById('file-btn');
   const fileInput = document.getElementById('file-input');
@@ -494,17 +505,35 @@
   }
 
   let objectUrl = null; // 현재 재생 중인 파일 곡의 임시 URL
-  async function playLocalFile(fileId) {
+  async function playLocalFile(song) {
     let blob = null;
-    try { blob = await idbGet(fileId); } catch {}
+    try { blob = await idbGet(song.fileId); } catch {}
     if (!blob) {
       nowPlaying.textContent = '저장된 파일을 찾지 못했어요.';
       return;
     }
     if (objectUrl) URL.revokeObjectURL(objectUrl);
     objectUrl = URL.createObjectURL(blob);
-    audio.src = objectUrl;
-    audio.play().catch(() => {});
+
+    if (song.isVideo) {
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+      video.hidden = false;
+      video.src = objectUrl;
+      video.play().catch(() => {});
+    } else {
+      stopVideo();
+      audio.src = objectUrl;
+      audio.play().catch(() => {});
+    }
+  }
+
+  function stopVideo() {
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+    video.hidden = true;
   }
 
   /* ---------- 유튜브 ---------- */
@@ -555,7 +584,8 @@
 
   function playYouTube(id) {
     ytWrap.hidden = false;
-    // mp3 재생 중이면 중지
+    // 파일/mp3 재생 중이면 중지
+    stopVideo();
     audio.pause();
     audio.removeAttribute('src');
     audio.load();
@@ -577,6 +607,7 @@
     if (current.isYt) {
       return ytReady && ytPlayer.getPlayerState() === YT.PlayerState.PLAYING;
     }
+    if (current.isVideo) return !video.paused;
     return !audio.paused;
   }
 
@@ -673,7 +704,7 @@
 
     const icon = document.createElement('span');
     icon.className = 'icon';
-    icon.textContent = getYouTubeId(song.url) ? '▶' : (song.fileId ? '♬' : '♪');
+    icon.textContent = getYouTubeId(song.url) ? '▶' : (song.isVideo ? '🎬' : (song.fileId ? '♬' : '♪'));
 
     const titleSpan = document.createElement('span');
     titleSpan.className = 'title';
@@ -738,15 +769,16 @@
           ytPlayer.playVideo();
         }
       } else {
-        if (audio.paused) audio.play();
-        else audio.pause();
+        const media = current.isVideo ? video : audio;
+        if (media.paused) media.play();
+        else media.pause();
       }
       return;
     }
 
     // 다른 곡 클릭 → 새로 재생
     if (currentLi) currentLi.classList.remove('playing');
-    current = { key, title: song.title, isYt: !!ytId };
+    current = { key, title: song.title, isYt: !!ytId, isVideo: !!song.isVideo };
     currentLi = li;
     nowPlaying.textContent = '지금 듣는 중 · ' + song.title;
 
@@ -754,9 +786,10 @@
       playYouTube(ytId);
     } else if (song.fileId) {
       stopYouTube();
-      playLocalFile(song.fileId);
+      playLocalFile(song);
     } else {
       stopYouTube();
+      stopVideo();
       audio.src = song.url;
       audio.play();
     }
@@ -773,6 +806,8 @@
     if (current && current.key === songKey(song)) {
       if (current.isYt) {
         stopYouTube();
+      } else if (current.isVideo) {
+        stopVideo();
       } else {
         audio.pause();
         audio.removeAttribute('src');
@@ -841,7 +876,10 @@
 
   // 플레이어 자체 컨트롤과 목록 표시 동기화 (mp3 곡일 때만)
   function currentIsAudio() {
-    return current && !current.isYt;
+    return current && !current.isYt && !current.isVideo;
+  }
+  function currentIsVideo() {
+    return current && current.isVideo;
   }
   audio.addEventListener('pause', () => {
     if (currentIsAudio() && currentLi) currentLi.classList.remove('playing');
@@ -851,6 +889,15 @@
   });
   audio.addEventListener('ended', () => {
     if (currentIsAudio() && currentLi) currentLi.classList.remove('playing');
+  });
+  video.addEventListener('pause', () => {
+    if (currentIsVideo() && currentLi) currentLi.classList.remove('playing');
+  });
+  video.addEventListener('play', () => {
+    if (currentIsVideo() && currentLi) currentLi.classList.add('playing');
+  });
+  video.addEventListener('ended', () => {
+    if (currentIsVideo() && currentLi) currentLi.classList.remove('playing');
   });
 
   // 내 파일에서 고르기
@@ -862,6 +909,7 @@
     // 제목을 입력해 뒀으면 그 제목, 아니면 파일 이름 사용
     const title = titleInput.value.trim() || file.name.replace(/\.[^.]+$/, '');
     const fileId = 'file-' + Date.now();
+    const isVideo = file.type.startsWith('video/') || /\.(mp4|mov|webm)$/i.test(file.name);
 
     try {
       await idbPut(fileId, file);
@@ -871,7 +919,7 @@
       return;
     }
 
-    activeFolder().songs.push({ title, fileId });
+    activeFolder().songs.push({ title, fileId, isVideo });
     saveData();
     render();
     titleInput.value = '';
