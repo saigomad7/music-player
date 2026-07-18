@@ -108,6 +108,29 @@
 
   .form button:hover { background: var(--accent-deep); }
 
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-dim);
+    font-size: 0.8rem;
+  }
+
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .form .file-btn {
+    color: var(--accent-deep);
+    background: var(--accent-soft);
+    font-size: 0.95rem;
+  }
+
+  .form .file-btn:hover { background: #f7ddd1; }
+
   /* 플레이어 */
   .player { margin: 18px 0; }
   .player audio { width: 100%; }
@@ -365,6 +388,9 @@
     <input id="song-title" type="text" placeholder="노래 제목" autocomplete="off">
     <input id="song-url" type="url" placeholder="노래 URL (mp3 또는 유튜브 링크)" autocomplete="off">
     <button id="add-btn">목록에 담기</button>
+    <div class="divider">또는</div>
+    <button id="file-btn" class="file-btn" type="button">📁 내 파일에서 고르기</button>
+    <input id="file-input" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg" hidden>
   </div>
 
   <div class="player">
@@ -389,6 +415,8 @@
   const emptyMsg = document.getElementById('empty-msg');
   const ytWrap = document.getElementById('yt-wrap');
   const folderBar = document.getElementById('folder-bar');
+  const fileBtn = document.getElementById('file-btn');
+  const fileInput = document.getElementById('file-input');
 
   const STORAGE_KEY = 'music-player-data';
   const LEGACY_KEY = 'music-player-songs';
@@ -419,9 +447,70 @@
     return data.folders.find(f => f.id === data.activeId) || data.folders[0];
   }
 
+  // 곡 식별 키: 내 파일 곡은 fileId, URL 곡은 url
+  function songKey(song) {
+    return song.fileId || song.url;
+  }
+
+  /* ---------- 내 파일 저장 (IndexedDB) ---------- */
+
+  let dbPromise = null;
+  function getDb() {
+    if (!dbPromise) {
+      dbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open('music-player-files', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('files');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    return dbPromise;
+  }
+
+  function idbPut(key, blob) {
+    return getDb().then(db => new Promise((resolve, reject) => {
+      const tx = db.transaction('files', 'readwrite');
+      tx.objectStore('files').put(blob, key);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+
+  function idbGet(key) {
+    return getDb().then(db => new Promise((resolve, reject) => {
+      const req = db.transaction('files').objectStore('files').get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    }));
+  }
+
+  function idbDelete(key) {
+    return getDb().then(db => new Promise((resolve, reject) => {
+      const tx = db.transaction('files', 'readwrite');
+      tx.objectStore('files').delete(key);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+
+  let objectUrl = null; // 현재 재생 중인 파일 곡의 임시 URL
+  async function playLocalFile(fileId) {
+    let blob = null;
+    try { blob = await idbGet(fileId); } catch {}
+    if (!blob) {
+      nowPlaying.textContent = '저장된 파일을 찾지 못했어요.';
+      return;
+    }
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    objectUrl = URL.createObjectURL(blob);
+    audio.src = objectUrl;
+    audio.play().catch(() => {});
+  }
+
   /* ---------- 유튜브 ---------- */
 
   function getYouTubeId(url) {
+    if (!url) return null;
     const m = url.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{11})/);
     return m ? m[1] : null;
   }
@@ -442,7 +531,7 @@
           }
         },
         onStateChange: (e) => {
-          if (!current || !getYouTubeId(current.url) || !currentLi) return;
+          if (!current || !current.isYt || !currentLi) return;
           if (e.data === YT.PlayerState.PLAYING) {
             currentLi.classList.add('playing');
           } else if (e.data === YT.PlayerState.PAUSED || e.data === YT.PlayerState.ENDED) {
@@ -485,7 +574,7 @@
 
   function isPlayingNow() {
     if (!current) return false;
-    if (getYouTubeId(current.url)) {
+    if (current.isYt) {
       return ytReady && ytPlayer.getPlayerState() === YT.PlayerState.PLAYING;
     }
     return !audio.paused;
@@ -570,7 +659,7 @@
 
     activeFolder().songs.forEach(song => {
       const li = createSongItem(song);
-      if (current && current.url === song.url) {
+      if (current && current.key === songKey(song)) {
         currentLi = li;
         if (isPlayingNow()) li.classList.add('playing');
       }
@@ -584,7 +673,7 @@
 
     const icon = document.createElement('span');
     icon.className = 'icon';
-    icon.textContent = getYouTubeId(song.url) ? '▶' : '♪';
+    icon.textContent = getYouTubeId(song.url) ? '▶' : (song.fileId ? '♬' : '♪');
 
     const titleSpan = document.createElement('span');
     titleSpan.className = 'title';
@@ -636,8 +725,9 @@
 
   function togglePlay(song, li) {
     const ytId = getYouTubeId(song.url);
+    const key = songKey(song);
 
-    if (current && current.url === song.url) {
+    if (current && current.key === key) {
       // 같은 곡 클릭 → 재생/일시정지 토글
       currentLi = li;
       if (ytId) {
@@ -656,12 +746,15 @@
 
     // 다른 곡 클릭 → 새로 재생
     if (currentLi) currentLi.classList.remove('playing');
-    current = { url: song.url, title: song.title };
+    current = { key, title: song.title, isYt: !!ytId };
     currentLi = li;
     nowPlaying.textContent = '지금 듣는 중 · ' + song.title;
 
     if (ytId) {
       playYouTube(ytId);
+    } else if (song.fileId) {
+      stopYouTube();
+      playLocalFile(song.fileId);
     } else {
       stopYouTube();
       audio.src = song.url;
@@ -677,8 +770,8 @@
     const idx = folder.songs.indexOf(song);
     if (idx > -1) folder.songs.splice(idx, 1);
 
-    if (current && current.url === song.url) {
-      if (getYouTubeId(song.url)) {
+    if (current && current.key === songKey(song)) {
+      if (current.isYt) {
         stopYouTube();
       } else {
         audio.pause();
@@ -689,6 +782,8 @@
       current = null;
       currentLi = null;
     }
+
+    if (song.fileId) idbDelete(song.fileId).catch(() => {});
 
     saveData();
     render();
@@ -746,7 +841,7 @@
 
   // 플레이어 자체 컨트롤과 목록 표시 동기화 (mp3 곡일 때만)
   function currentIsAudio() {
-    return current && !getYouTubeId(current.url);
+    return current && !current.isYt;
   }
   audio.addEventListener('pause', () => {
     if (currentIsAudio() && currentLi) currentLi.classList.remove('playing');
@@ -756,6 +851,31 @@
   });
   audio.addEventListener('ended', () => {
     if (currentIsAudio() && currentLi) currentLi.classList.remove('playing');
+  });
+
+  // 내 파일에서 고르기
+  fileBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    // 제목을 입력해 뒀으면 그 제목, 아니면 파일 이름 사용
+    const title = titleInput.value.trim() || file.name.replace(/\.[^.]+$/, '');
+    const fileId = 'file-' + Date.now();
+
+    try {
+      await idbPut(fileId, file);
+    } catch {
+      alert('파일을 저장하지 못했어요.\n휴대폰 저장 공간이 부족할 수 있어요.');
+      fileInput.value = '';
+      return;
+    }
+
+    activeFolder().songs.push({ title, fileId });
+    saveData();
+    render();
+    titleInput.value = '';
+    fileInput.value = '';
   });
 
   addBtn.addEventListener('click', addSong);
