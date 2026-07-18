@@ -399,7 +399,7 @@
     <button id="add-btn">목록에 담기</button>
     <div class="divider">또는</div>
     <button id="file-btn" class="file-btn" type="button">📁 내 파일에서 고르기</button>
-    <input id="file-input" type="file" accept="audio/*,video/mp4,video/webm,video/quicktime,.mp3,.m4a,.aac,.wav,.ogg,.mp4,.mov,.webm" hidden>
+    <input id="file-input" type="file" accept="audio/*,video/mp4,video/webm,video/quicktime,.mp3,.m4a,.aac,.wav,.ogg,.mp4,.mov,.webm" multiple hidden>
   </div>
 
   <div class="player">
@@ -903,27 +903,36 @@
   // 내 파일에서 고르기
   fileBtn.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', async () => {
-    const file = fileInput.files[0];
-    if (!file) return;
+    const files = [...fileInput.files];
+    if (!files.length) return;
 
-    // 제목을 입력해 뒀으면 그 제목, 아니면 파일 이름 사용
-    const title = titleInput.value.trim() || file.name.replace(/\.[^.]+$/, '');
-    const fileId = 'file-' + Date.now();
-    const isVideo = file.type.startsWith('video/') || /\.(mp4|mov|webm)$/i.test(file.name);
+    // 파일이 1개일 때만 입력해 둔 제목 사용, 여러 개면 각 파일 이름 사용
+    const customTitle = files.length === 1 ? titleInput.value.trim() : '';
+    let failed = 0;
 
-    try {
-      await idbPut(fileId, file);
-    } catch {
-      alert('파일을 저장하지 못했어요.\n휴대폰 저장 공간이 부족할 수 있어요.');
-      fileInput.value = '';
-      return;
+    for (const [i, file] of files.entries()) {
+      const title = customTitle || file.name.replace(/\.[^.]+$/, '');
+      const fileId = 'file-' + Date.now() + '-' + i;
+      const isVideo = file.type.startsWith('video/') || /\.(mp4|mov|webm)$/i.test(file.name);
+
+      try {
+        await idbPut(fileId, file);
+      } catch {
+        failed++;
+        continue;
+      }
+
+      activeFolder().songs.push({ title, fileId, isVideo });
     }
 
-    activeFolder().songs.push({ title, fileId, isVideo });
     saveData();
     render();
-    titleInput.value = '';
+    if (customTitle) titleInput.value = '';
     fileInput.value = '';
+
+    if (failed) {
+      alert(`${failed}개 파일은 저장하지 못했어요.\n휴대폰 저장 공간이 부족할 수 있어요.`);
+    }
   });
 
   addBtn.addEventListener('click', addSong);
