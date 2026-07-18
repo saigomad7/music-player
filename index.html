@@ -190,18 +190,29 @@
 
   let currentItem = null; // 현재 재생 중인 li
 
+  const STORAGE_KEY = 'music-player-songs';
+
+  function loadSongs() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveSongs() {
+    const songs = [...songList.children].map(li => ({
+      title: li.querySelector('.title').textContent,
+      url: li.dataset.url
+    }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(songs));
+  }
+
   function updateEmptyMsg() {
     emptyMsg.style.display = songList.children.length ? 'none' : 'block';
   }
 
-  function addSong() {
-    const title = titleInput.value.trim();
-    const url = urlInput.value.trim();
-    if (!title || !url) {
-      alert('노래 제목과 URL을 모두 입력해 주세요.');
-      return;
-    }
-
+  function createSongItem(title, url) {
     const li = document.createElement('li');
     li.dataset.url = url;
 
@@ -219,6 +230,18 @@
     li.appendChild(titleSpan);
     li.appendChild(delBtn);
     songList.appendChild(li);
+  }
+
+  function addSong() {
+    const title = titleInput.value.trim();
+    const url = urlInput.value.trim();
+    if (!title || !url) {
+      alert('노래 제목과 URL을 모두 입력해 주세요.');
+      return;
+    }
+
+    createSongItem(title, url);
+    saveSongs();
 
     titleInput.value = '';
     urlInput.value = '';
@@ -257,6 +280,7 @@
       currentItem = null;
     }
     li.remove();
+    saveSongs();
     updateEmptyMsg();
   }
 
@@ -275,6 +299,8 @@
   urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') addSong(); });
   titleInput.addEventListener('keydown', e => { if (e.key === 'Enter') addSong(); });
 
+  // 저장된 목록 복원
+  loadSongs().forEach(song => createSongItem(song.title, song.url));
   updateEmptyMsg();
 </script>
 </body>
