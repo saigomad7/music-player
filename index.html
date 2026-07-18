@@ -83,6 +83,16 @@
   .player { margin: 16px 0; }
   .player audio { width: 100%; }
 
+  /* 유튜브 플레이어 */
+  .yt-wrap {
+    aspect-ratio: 16 / 9;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #000;
+    margin-bottom: 10px;
+  }
+  .yt-wrap iframe { width: 100%; height: 100%; border: 0; }
+
   .now-playing {
     font-size: 0.85rem;
     color: var(--text-dim);
@@ -166,12 +176,13 @@
 
   <div class="form">
     <input id="song-title" type="text" placeholder="노래 제목" autocomplete="off">
-    <input id="song-url" type="url" placeholder="노래 URL (mp3 등)" autocomplete="off">
+    <input id="song-url" type="url" placeholder="노래 URL (mp3 또는 유튜브 링크)" autocomplete="off">
     <button id="add-btn">노래 추가</button>
   </div>
 
   <div class="player">
     <div class="now-playing" id="now-playing"></div>
+    <div class="yt-wrap" id="yt-wrap" hidden><div id="yt-player"></div></div>
     <audio id="audio" controls></audio>
   </div>
 
@@ -188,9 +199,75 @@
   const nowPlaying = document.getElementById('now-playing');
   const emptyMsg = document.getElementById('empty-msg');
 
+  const ytWrap = document.getElementById('yt-wrap');
+
   let currentItem = null; // 현재 재생 중인 li
 
   const STORAGE_KEY = 'music-player-songs';
+
+  /* ---------- 유튜브 ---------- */
+
+  function getYouTubeId(url) {
+    const m = url.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{11})/);
+    return m ? m[1] : null;
+  }
+
+  let ytPlayer = null;
+  let ytReady = false;
+  let pendingYtId = null; // API 로딩 중 클릭된 영상
+
+  window.onYouTubeIframeAPIReady = function () {
+    ytPlayer = new YT.Player('yt-player', {
+      playerVars: { playsinline: 1 },
+      events: {
+        onReady: () => {
+          ytReady = true;
+          if (pendingYtId) {
+            ytPlayer.loadVideoById(pendingYtId);
+            pendingYtId = null;
+          }
+        },
+        onStateChange: (e) => {
+          if (!currentItem || !getYouTubeId(currentItem.dataset.url)) return;
+          if (e.data === YT.PlayerState.PLAYING) {
+            currentItem.classList.add('playing');
+          } else if (e.data === YT.PlayerState.PAUSED || e.data === YT.PlayerState.ENDED) {
+            currentItem.classList.remove('playing');
+          }
+        },
+        onError: () => {
+          nowPlaying.textContent = '이 영상은 외부 사이트 재생이 허용되지 않습니다.';
+          if (currentItem) currentItem.classList.remove('playing');
+        }
+      }
+    });
+  };
+
+  // API를 미리 로드해 두면 첫 클릭 시 바로 재생 가능
+  (function loadYtApi() {
+    const s = document.createElement('script');
+    s.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(s);
+  })();
+
+  function playYouTube(id) {
+    ytWrap.hidden = false;
+    // mp3 재생 중이면 중지
+    audio.pause();
+    audio.removeAttribute('src');
+    audio.load();
+    if (ytReady) {
+      ytPlayer.loadVideoById(id);
+    } else {
+      pendingYtId = id;
+    }
+  }
+
+  function stopYouTube() {
+    if (ytPlayer && ytReady) ytPlayer.stopVideo();
+    pendingYtId = null;
+    ytWrap.hidden = true;
+  }
 
   function loadSongs() {
     try {
@@ -250,14 +327,20 @@
   }
 
   function togglePlay(li, title) {
+    const ytId = getYouTubeId(li.dataset.url);
+
     if (currentItem === li) {
       // 같은 곡 클릭 → 재생/일시정지 토글
-      if (audio.paused) {
-        audio.play();
-        li.classList.add('playing');
+      if (ytId) {
+        if (!ytReady) return;
+        if (ytPlayer.getPlayerState() === YT.PlayerState.PLAYING) {
+          ytPlayer.pauseVideo();
+        } else {
+          ytPlayer.playVideo();
+        }
       } else {
-        audio.pause();
-        li.classList.remove('playing');
+        if (audio.paused) audio.play();
+        else audio.pause();
       }
       return;
     }
@@ -265,17 +348,27 @@
     // 다른 곡 클릭 → 새로 재생
     if (currentItem) currentItem.classList.remove('playing');
     currentItem = li;
-    audio.src = li.dataset.url;
-    audio.play();
-    li.classList.add('playing');
     nowPlaying.textContent = '재생 중: ' + title;
+
+    if (ytId) {
+      playYouTube(ytId);
+    } else {
+      stopYouTube();
+      audio.src = li.dataset.url;
+      audio.play();
+    }
+    li.classList.add('playing');
   }
 
   function removeSong(li) {
     if (currentItem === li) {
-      audio.pause();
-      audio.removeAttribute('src');
-      audio.load();
+      if (getYouTubeId(li.dataset.url)) {
+        stopYouTube();
+      } else {
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
+      }
       nowPlaying.textContent = '';
       currentItem = null;
     }
@@ -284,15 +377,18 @@
     updateEmptyMsg();
   }
 
-  // 플레이어 자체 컨트롤과 목록 표시 동기화
+  // 플레이어 자체 컨트롤과 목록 표시 동기화 (mp3 곡일 때만)
+  function currentIsAudio() {
+    return currentItem && !getYouTubeId(currentItem.dataset.url);
+  }
   audio.addEventListener('pause', () => {
-    if (currentItem) currentItem.classList.remove('playing');
+    if (currentIsAudio()) currentItem.classList.remove('playing');
   });
   audio.addEventListener('play', () => {
-    if (currentItem) currentItem.classList.add('playing');
+    if (currentIsAudio()) currentItem.classList.add('playing');
   });
   audio.addEventListener('ended', () => {
-    if (currentItem) currentItem.classList.remove('playing');
+    if (currentIsAudio()) currentItem.classList.remove('playing');
   });
 
   addBtn.addEventListener('click', addSong);
